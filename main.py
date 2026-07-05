@@ -2,7 +2,7 @@ import typer
 from rich.console import Console
 from rich.panel import Panel
 from core.calculus import get_gradient, get_lagrange
-
+from sympy import sstr 
 app = typer.Typer(help="Calculus 3 & Magnetism CLI Engine")
 console = Console()
 
@@ -44,7 +44,7 @@ def lagrange(objective_function: str, constraint_function: str, showSteps: bool 
     Calculate the Lagrange multipliers for optimization problems (Coming soon!)
     """
 
-    console.print("[bold cyan]Lagrange feature is under construction![/bold cyan]")
+    # console.print("[bold cyan]Lagrange feature is under construction![/bold cyan]")
     try:
         results = get_lagrange(objective_function, constraint_function)
     
@@ -72,10 +72,11 @@ def lagrange(objective_function: str, constraint_function: str, showSteps: bool 
                 f"∇g = ⟨ {diff_const[0]}, {diff_const[1]}, {diff_const[2]} ⟩\n\n"
                 
                 f"[bold cyan]2. System of Equations (∇f = λ∇g):[/bold cyan]\n"
-                f"• {lembda_eq[0]}\n"
-                f"• {lembda_eq[1]}\n"
-                f"• {lembda_eq[2]}\n"
-                f"• {constraint_function} = 0\n\n"
+                f"• {sstr(lembda_eq[0].lhs)} = {sstr(lembda_eq[0].rhs)}\n"
+                f"• {sstr(lembda_eq[1].lhs)} = {sstr(lembda_eq[1].rhs)}\n"
+                f"• {sstr(lembda_eq[2].lhs)} = {sstr(lembda_eq[2].rhs)}\n"
+
+                f"• {sstr(constraint_function)} = 0\n\n"
                 
                 f"[bold cyan]3. Solutions (Critical Points & Optimal Values):[/bold cyan]\n"
                 f"{points_and_values}"
