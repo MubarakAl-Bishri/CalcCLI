@@ -3,30 +3,36 @@ from rich.console import Console
 from rich.panel import Panel
 from core.calculus import get_gradient, get_lagrange, get_vector_operation
 from sympy import sstr
+from enum import Enum
 
 app = typer.Typer(help="Calculus 3 & Magnetism CLI Engine")
 console = Console()
 
+# Enum creates strict choices for the CLI argument, preventing typos!
+class VectorOp(str, Enum):
+    add = "add"
+    subtract = "subtract"
+    multiply = "multiply"
+    divide = "divide"
+    dot = "dot"
+    cross = "cross"
+
 
 @app.command()
-def gradient(function: str, showSteps: bool = False):
+def gradient(function: str, show_steps: bool = False):
     """
     Calculate the gradient vector of a 3D surface.
     Example: python3 main.py gradient "x**2 + y**2 - z"
     """
-    # console.print(f"[bold blue]Calculating gradient for:[/bold blue] {function}")
-
     try:
-        # Call our math engine
         results = get_gradient(function)
 
-        if showSteps:
-            # Format the output nicely using Rich
+        if show_steps:
             steps_text = (
                 f"[bold green]Original Equation:[/bold green] f(x,y,z) = {results['equation']}\n\n"
                 f"[bold yellow]∂f/∂x:[/bold yellow] {results['dx']}\n"
                 f"[bold yellow]∂f/∂y:[/bold yellow] {results['dy']}\n"
-                f"[bold yellow]∂f/∂z:[/bold yellow] {results['dz']}"
+                f"[bold yellow]∂f/∂z:[/bold yellow] {results['dz']}\n\n" # Added missing newlines here
                 f"[bold green]Gradient ∇f:[/bold green] \\[ {results['dx']}, {results['dy']}, {results['dz']} ]"
             )
             console.print(
@@ -40,36 +46,38 @@ def gradient(function: str, showSteps: bool = False):
         console.print(
             f"[bold red]Error parsing math:[/bold red] Make sure to use Python syntax (e.g., 'x**2' not 'x^2').\nDetails: {e}"
         )
+        raise typer.Exit(code=1)
 
 
 @app.command()
 def lagrange(
-    objective_function: str, constraint_function: str, showSteps: bool = False
+    objective_function: str, constraint_function: str, show_steps: bool = False
 ):
     """
     Calculate the Lagrange multipliers for optimization problems
     Example: python3 main.py lagrange "x**2 + y**2 + z**2" "x + y + z - 1"
     """
-
-    # console.print("[bold cyan]Lagrange feature is under construction![/bold cyan]")
     try:
         results = get_lagrange(objective_function, constraint_function)
 
-        # Extract data from the new return structure
-        critical_points = results[0]["criticalPoints"]
-        optimal_values = results[0]["optimalValues"]
-        diff_obj = results[1]["diffObjectiveFunction"]
-        diff_const = results[1]["diffConstraintFunction"]
-        lembda_eq = results[1]["lembdaEq"]
+        # Extract data using the refactored, single-dictionary structure
+        critical_points = results["critical_points"]
+        optimal_values = results["optimal_values"]
+        details = results["details"]
+        
+        diff_obj = details["diff_objective_function"]
+        diff_const = details["diff_constraint_function"]
+        lembda_eq = details["lembda_eq"]
 
-        # Pair up the critical points with their resulting optimal values for a clean display
-        points_and_values = "\n".join(
-            f"Point {i}: (x: {pt[0]}, y: {pt[1]}, z: {pt[2]}) ➔ f(x,y,z) = {val}"
-            for i, (pt, val) in enumerate(zip(critical_points, optimal_values), start=1)
-        )
+        if not critical_points:
+            points_and_values = "[italic]No real critical points found for this system.[/italic]"
+        else:
+            points_and_values = "\n".join(
+                f"Point {i}: (x: {pt[0]}, y: {pt[1]}, z: {pt[2]}) ➔ f(x,y,z) = {val}"
+                for i, (pt, val) in enumerate(zip(critical_points, optimal_values), start=1)
+            )
 
-        if showSteps:
-            # Build the detailed step-by-step breakdown
+        if show_steps:
             steps_text = (
                 f"[bold green]Objective Function:[/bold green] f(x,y,z) = {objective_function}\n"
                 f"[bold green]Constraint Function:[/bold green] g(x,y,z) = {constraint_function}\n\n"
@@ -93,7 +101,6 @@ def lagrange(
             )
 
         else:
-            # Build the concise, final-answer summary
             summary_text = (
                 f"[bold green]Objective:[/bold green] {objective_function} | "
                 f"[bold green]Constraint:[/bold green] {constraint_function}\n"
@@ -110,23 +117,43 @@ def lagrange(
         console.print(
             f"[bold red]Error parsing math:[/bold red] Make sure to use Python syntax (e.g., 'x**2' not 'x^2').\nDetails: {e}"
         )
-
+        raise typer.Exit(code=1)
 
 @app.command()
-def vector_operation(v1: str, v2: str, operation: str):
+def vector_operation(v1: str, v2: str, operation: VectorOp, show_steps: bool = False):
     """
     Perform vector operations (dot, cross, add, subtract) on two 3D vectors.
-    Example: python3 main.py vector-operation "x**2 + y**2 + z**2" "x + y + z" "dot"
+    Example: python3 main.py vector-operation "[x, y, z]" "[1, 2, 3]" dot --show-steps
     """
     try:
-        result = get_vector_operation(v1, v2, operation)
-        console.print(
-            Panel(
-                f"[bold green]Result of {operation} operation:[/bold green] {result}",
-                title="Vector Operation Result",
-                expand=False,
+        data = get_vector_operation(v1, v2, operation.value)
+        result = data["result"]
+        steps = data["steps"]
+
+        if show_steps and steps:
+            steps_text = (
+                f"[bold cyan]1. General Formula ({operation.value}):[/bold cyan]\n"
+                f"{steps.get('formula', 'N/A')}\n\n"
+                f"[bold cyan]2. Component Substitution:[/bold cyan]\n"
+                f"{steps.get('substitution', 'N/A')}\n\n"
+                f"[bold green]3. Final Result:[/bold green]\n"
+                f"{result}"
             )
-        )
+            console.print(
+                Panel(
+                    steps_text,
+                    title="Vector Operation (Step-by-Step)",
+                    expand=False,
+                )
+            )
+        else:
+            console.print(
+                Panel(
+                    f"[bold green]Result of {operation.value}:[/bold green] {result}",
+                    title="Vector Operation Result",
+                    expand=False,
+                )
+            )
     except Exception as e:
         console.print(
            Panel(
@@ -135,6 +162,8 @@ def vector_operation(v1: str, v2: str, operation: str):
                 expand=False,
             )
         )
-
+        raise typer.Exit(code=1)
+    
+    
 if __name__ == "__main__":
     app()
