@@ -157,7 +157,7 @@ def vector_operation(
                 num_val_text = "[bold red]4. No Numerical Value Available[/bold red]\n"
                 
             if operation.value == "angle" and isinstance(numerical_value, (int, float)):
-                num_val_text += f"\n\n[italic]Note: Angle is in radians. Convert to degrees if needed.[/italic]"
+                num_val_text += "\n\n[italic]Note: Angle is in radians. Convert to degrees if needed.[/italic]"
             
             # 2. Safely evaluate the unit suffix to avoid quote collisions inside the f-string
             unit_suffix = " rad" if operation.value == "angle" else ""
