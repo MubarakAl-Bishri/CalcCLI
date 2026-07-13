@@ -66,80 +66,137 @@ def get_lagrange(objective_function: Union[str, sp.Expr], constraint_function: U
         }
     }
 
-def get_vector_operation(v1_str: Union[str, sp.Expr], v2_str: Union[str, sp.Expr], operation: str) -> dict[str, Any]:    
+
+def get_vector_operation(input_str_1: Union[str, sp.Expr], input_str_2: Union[str, sp.Expr], operation_type: str) -> dict[str, Any]:    
     """Parses string inputs, calculates the operation, and provides step-by-step logic."""
-    x, y, z = sp.symbols('x y z')
-    local_dict = {"x": x, "y": y, "z": z}
+    x, y, z,theta = sp.symbols('x y z θ')
+    symbol_dict = {"x": x, "y": y, "z": z, "theta": theta, "e": sp.E, "exp": sp.exp, "sin": sp.sin, "cos": sp.cos}
 
-    N = CoordSys3D('N')
-    unit_vectors = [N.i, N.j, N.k]
+    # 'coord_sys' is much clearer than the arbitrary 'N'
+    coord_sys = CoordSys3D('coord_sys')
+    base_vectors = [coord_sys.i, coord_sys.j, coord_sys.k]
     
-    def parse_input(val_str):
-        parsed_val = sp.sympify(str(val_str).strip(), locals=local_dict)
-        if isinstance(parsed_val, list) or isinstance(parsed_val, tuple):
-            return sum((c * u for c, u in zip(parsed_val, unit_vectors)), Vector.zero)
-        return parsed_val
+    def parse_expression(input_string):
+        if not input_string:  # Safely catch the empty string from Typer
+            return None
+            
+        parsed_expression = sp.sympify(str(input_string).strip(), locals=symbol_dict)
+        if isinstance(parsed_expression, (list, tuple)):
+            return sum((coeff * unit_vec for coeff, unit_vec in zip(parsed_expression, base_vectors)), Vector.zero)
+        return parsed_expression
 
-    val1 = parse_input(v1_str)
-    val2 = parse_input(v2_str)
+    operand_1 = parse_expression(input_str_1)
+    operand_2 = parse_expression(input_str_2)
 
     # Helper function to extract [x, y, z] components for the step-by-step breakdown
-    def get_components(v):
-        if isinstance(v, Vector):
-            mat = v.to_matrix(N)
-            return [mat[0], mat[1], mat[2]]
-        return [v, v, v] # Fallback if a scalar is passed
+    def extract_components(value):
+        if value is None:
+            return [None, None, None] # Prevents crashing if v2 is empty
+        if isinstance(value, Vector):
+            matrix_representation = value.to_matrix(coord_sys)
+            return [matrix_representation[0], matrix_representation[1], matrix_representation[2]]
+        return [value, value, value]
 
-    c1 = get_components(val1)
-    c2 = get_components(val2)
+    components_1 = extract_components(operand_1)
+    components_2 = extract_components(operand_2)
     
-    steps = {}
+    solution_steps = {}
 
-    def safe_dot(a, b):
-        if isinstance(a, Vector) and isinstance(b, Vector):
-            steps["formula"] = "(x₁ * x₂) + (y₁ * y₂) + (z₁ * z₂)"
-            steps["substitution"] = f"({c1[0]} * {c2[0]}) + ({c1[1]} * {c2[1]}) + ({c1[2]} * {c2[2]})"
-            return a.dot(b)
+    def calculate_dot(vec_a, vec_b):
+        if isinstance(vec_a, Vector) and isinstance(vec_b, Vector):
+            solution_steps["formula"] = "(x₁ * x₂) + (y₁ * y₂) + (z₁ * z₂)"
+            solution_steps["substitution"] = f"({components_1[0]} * {components_2[0]}) + ({components_1[1]} * {components_2[1]}) + ({components_1[2]} * {components_2[2]})"
+            return vec_a.dot(vec_b)
         raise ValueError("Mathematical Error: The dot product is only defined between two vectors.")
 
-    def safe_cross(a, b):
-        if isinstance(a, Vector) and isinstance(b, Vector):
-            steps["formula"] = "⟨ (y₁z₂ - z₁y₂), (z₁x₂ - x₁z₂), (x₁y₂ - y₁x₂) ⟩"
-            steps["substitution"] = f"⟨ ({c1[1]} * {c2[2]} - {c1[2]} * {c2[1]}), ({c1[2]} * {c2[0]} - {c1[0]} * {c2[2]}), ({c1[0]} * {c2[1]} - {c1[1]} * {c2[0]}) ⟩"
-            return a.cross(b)
+    def calculate_cross(vec_a, vec_b):
+        if isinstance(vec_a, Vector) and isinstance(vec_b, Vector):
+            solution_steps["formula"] = "⟨ (y₁z₂ - z₁y₂), (z₁x₂ - x₁z₂), (x₁y₂ - y₁x₂) ⟩"
+            solution_steps["substitution"] = f"⟨ ({components_1[1]} * {components_2[2]} - {components_1[2]} * {components_2[1]}), ({components_1[2]} * {components_2[0]} - {components_1[0]} * {components_2[2]}), ({components_1[0]} * {components_2[1]} - {components_1[1]} * {components_2[0]}) ⟩"
+            return vec_a.cross(vec_b)
         raise ValueError("Mathematical Error: The cross product is only defined between two vectors.")
 
     # Standard operations
-    def op_add(a, b):
-        steps["formula"] = "⟨ x₁ + x₂, y₁ + y₂, z₁ + z₂ ⟩"
-        steps["substitution"] = f"⟨ {c1[0]} + {c2[0]}, {c1[1]} + {c2[1]}, {c1[2]} + {c2[2]} ⟩"
-        return a + b
+    def calculate_addition(val_a, val_b):
+        solution_steps["formula"] = "⟨ x₁ + x₂, y₁ + y₂, z₁ + z₂ ⟩"
+        solution_steps["substitution"] = f"⟨ {components_1[0]} + {components_2[0]}, {components_1[1]} + {components_2[1]}, {components_1[2]} + {components_2[2]} ⟩"
+        return val_a + val_b
 
-    def op_sub(a, b):
-        steps["formula"] = "⟨ x₁ - x₂, y₁ - y₂, z₁ - z₂ ⟩"
-        steps["substitution"] = f"⟨ {c1[0]} - {c2[0]}, {c1[1]} - {c2[1]}, {c1[2]} - {c2[2]} ⟩"
-        return a - b
+    def calculate_subtraction(val_a, val_b):
+        solution_steps["formula"] = "⟨ x₁ - x₂, y₁ - y₂, z₁ - z₂ ⟩"
+        solution_steps["substitution"] = f"⟨ {components_1[0]} - {components_2[0]}, {components_1[1]} - {components_2[1]}, {components_1[2]} - {components_2[2]} ⟩"
+        return val_a - val_b
+    
+    def calculate_length(vec_a, vec_b=None): # vec_b safely absorbs the None
+        if isinstance(vec_a, Vector):
+            solution_steps["formula"] = "√(x² + y² + z²)"
+            # Sympy objects format cleanly inside f-strings
+            solution_steps["substitution"] = f"√(({components_1[0]})² + ({components_1[1]})² + ({components_1[2]})²)"
+            return vec_a.magnitude()
+        raise ValueError("Mathematical Error: Length is only defined for a vector.")
+    
+    def calculate_angle(vec_a, vec_b):
+        if isinstance(vec_a, Vector) and isinstance(vec_b, Vector):
+            dot_product = vec_a.dot(vec_b)
+            magnitude_product = vec_a.magnitude() * vec_b.magnitude()
+            solution_steps["formula"] = "cos(θ) = (A · B) / (|A| * |B|)"
+            solution_steps["substitution"] = f"cos(θ) = ({dot_product}) / ({vec_a.magnitude()} * {vec_b.magnitude()})"
+            return sp.acos(dot_product / magnitude_product)
+        raise ValueError("Mathematical Error: Angle is only defined between two vectors.")
 
-    operations = {
-        "add": op_add,
-        "subtract": op_sub,
-        "multiply": lambda a, b: a * b, # Keeping these simple as they usually involve scalars
-        "divide": lambda a, b: a / b,
-        "dot": safe_dot,
-        "cross": safe_cross
+    def calculate_unit(vec_a, vec_b=None):
+        if isinstance(vec_a, Vector):
+            meg_a = vec_a.magnitude()
+            if meg_a == 0:
+                raise ValueError("Mathematical Error: Unit vector is only defined for a non-zero vector.")
+            unit_vector = vec_a / meg_a
+            solution_steps["formula"] = "Unit Vector = A / |A|"
+            solution_steps["substitution"] = f"Unit Vector = {vec_a} / {vec_a.magnitude()}"
+            return unit_vector
+        raise ValueError("Mathematical Error: Unit vector is only defined for a vector.")
+            
+
+    def calculate_projection(vec_a, vec_b):
+        if isinstance(vec_a, Vector) and isinstance(vec_b, Vector):
+            mag_b = vec_b.magnitude()
+            if mag_b == 0:
+                raise ValueError("Mathematical Error: Cannot project onto a zero vector.")
+            projection = (vec_a.dot(vec_b) / mag_b**2) * vec_b
+            solution_steps["formula"] = "Projection of A onto B = ((A · B) / |B|²) * B"
+            solution_steps["substitution"] = f"Projection = (({components_1[0]} * {components_2[0]} + {components_1[1]} * {components_2[1]} + {components_1[2]} * {components_2[2]}) / ({vec_b.magnitude()}²)) * {vec_b}"
+            return projection
+        raise ValueError("Mathematical Error: Projection is only defined between two vectors.")
+
+    supported_operations = {
+        "add": calculate_addition,
+        "subtract": calculate_subtraction,
+        "multiply": lambda val_a, val_b: val_a * val_b, 
+        "divide": lambda val_a, val_b: val_a / val_b,
+        "dot": calculate_dot,
+        "cross": calculate_cross,
+        "length": calculate_length,
+        "angle": calculate_angle,  # Assuming you have a function for angle calculation
+        "unit": calculate_unit,
+        "projection": calculate_projection,  # Assuming you have a function for projection
     }
     
-    if operation not in operations:
-        raise ValueError(f"Unknown operation: '{operation}'")
+    if operation_type not in supported_operations:
+        raise ValueError(f"Unknown operation: '{operation_type}'")
         
-    result = operations[operation](val1, val2)
+    calculation_result = supported_operations[operation_type](operand_1, operand_2)
+
+    try:
+        # Attempt to simplify the result for cleaner output
+        numerical_value = sp.N(calculation_result)
+    except Exception:
+        numerical_value = calculation_result  # Fallback to the original result if simplification fails
 
     return {
-        "result": result,
-        "steps": steps
+        "result": calculation_result,
+        "steps": solution_steps,
+    "numerical_value": (float(numerical_value) if numerical_value.is_real else complex(numerical_value)) if isinstance(numerical_value, sp.core.numbers.Number) else numerical_value
     }
-
 # --- Example Usage ---
 if __name__ == "__main__":
-    scalar_result = get_vector_operation("[x, y, z]", "[1, 2, 3]", "dot")
-    print(get_gradient(scalar_result))
+    scalar_result = get_vector_operation("[4, 5, 6]", "[1, 2, 3]", "angle")
+    print(type(scalar_result["numerical_value"]))
