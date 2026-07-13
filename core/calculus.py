@@ -66,20 +66,20 @@ def get_lagrange(objective_function: Union[str, sp.Expr], constraint_function: U
         }
     }
 
-from typing import Union, Any
-import sympy as sp
-from sympy.vector import CoordSys3D, Vector
 
 def get_vector_operation(input_str_1: Union[str, sp.Expr], input_str_2: Union[str, sp.Expr], operation_type: str) -> dict[str, Any]:    
     """Parses string inputs, calculates the operation, and provides step-by-step logic."""
-    x, y, z = sp.symbols('x y z')
-    symbol_dict = {"x": x, "y": y, "z": z}
+    x, y, z,theta = sp.symbols('x y z θ')
+    symbol_dict = {"x": x, "y": y, "z": z, "theta": theta, "e": sp.E, "exp": sp.exp, "sin": sp.sin, "cos": sp.cos}
 
     # 'coord_sys' is much clearer than the arbitrary 'N'
     coord_sys = CoordSys3D('coord_sys')
     base_vectors = [coord_sys.i, coord_sys.j, coord_sys.k]
     
     def parse_expression(input_string):
+        if not input_string:  # Safely catch the empty string from Typer
+            return None
+            
         parsed_expression = sp.sympify(str(input_string).strip(), locals=symbol_dict)
         if isinstance(parsed_expression, (list, tuple)):
             return sum((coeff * unit_vec for coeff, unit_vec in zip(parsed_expression, base_vectors)), Vector.zero)
@@ -90,10 +90,12 @@ def get_vector_operation(input_str_1: Union[str, sp.Expr], input_str_2: Union[st
 
     # Helper function to extract [x, y, z] components for the step-by-step breakdown
     def extract_components(value):
+        if value is None:
+            return [None, None, None] # Prevents crashing if v2 is empty
         if isinstance(value, Vector):
             matrix_representation = value.to_matrix(coord_sys)
             return [matrix_representation[0], matrix_representation[1], matrix_representation[2]]
-        return [value, value, value] # Fallback if a scalar is passed
+        return [value, value, value]
 
     components_1 = extract_components(operand_1)
     components_2 = extract_components(operand_2)
@@ -124,6 +126,46 @@ def get_vector_operation(input_str_1: Union[str, sp.Expr], input_str_2: Union[st
         solution_steps["formula"] = "⟨ x₁ - x₂, y₁ - y₂, z₁ - z₂ ⟩"
         solution_steps["substitution"] = f"⟨ {components_1[0]} - {components_2[0]}, {components_1[1]} - {components_2[1]}, {components_1[2]} - {components_2[2]} ⟩"
         return val_a - val_b
+    
+    def calculate_length(vec_a, vec_b=None): # vec_b safely absorbs the None
+        if isinstance(vec_a, Vector):
+            solution_steps["formula"] = "√(x² + y² + z²)"
+            # Sympy objects format cleanly inside f-strings
+            solution_steps["substitution"] = f"√(({components_1[0]})² + ({components_1[1]})² + ({components_1[2]})²)"
+            return vec_a.magnitude()
+        raise ValueError("Mathematical Error: Length is only defined for a vector.")
+    
+    def calculate_angle(vec_a, vec_b):
+        if isinstance(vec_a, Vector) and isinstance(vec_b, Vector):
+            dot_product = vec_a.dot(vec_b)
+            magnitude_product = vec_a.magnitude() * vec_b.magnitude()
+            solution_steps["formula"] = "cos(θ) = (A · B) / (|A| * |B|)"
+            solution_steps["substitution"] = f"cos(θ) = ({dot_product}) / ({vec_a.magnitude()} * {vec_b.magnitude()})"
+            return sp.acos(dot_product / magnitude_product)
+        raise ValueError("Mathematical Error: Angle is only defined between two vectors.")
+
+    def calculate_unit(vec_a, vec_b=None):
+        if isinstance(vec_a, Vector):
+            meg_a = vec_a.magnitude()
+            if meg_a == 0:
+                raise ValueError("Mathematical Error: Unit vector is only defined for a non-zero vector.")
+            unit_vector = vec_a / meg_a
+            solution_steps["formula"] = "Unit Vector = A / |A|"
+            solution_steps["substitution"] = f"Unit Vector = {vec_a} / {vec_a.magnitude()}"
+            return unit_vector
+        raise ValueError("Mathematical Error: Unit vector is only defined for a vector.")
+            
+
+    def calculate_projection(vec_a, vec_b):
+        if isinstance(vec_a, Vector) and isinstance(vec_b, Vector):
+            mag_b = vec_b.magnitude()
+            if mag_b == 0:
+                raise ValueError("Mathematical Error: Cannot project onto a zero vector.")
+            projection = (vec_a.dot(vec_b) / mag_b**2) * vec_b
+            solution_steps["formula"] = "Projection of A onto B = ((A · B) / |B|²) * B"
+            solution_steps["substitution"] = f"Projection = (({components_1[0]} * {components_2[0]} + {components_1[1]} * {components_2[1]} + {components_1[2]} * {components_2[2]}) / ({vec_b.magnitude()}²)) * {vec_b}"
+            return projection
+        raise ValueError("Mathematical Error: Projection is only defined between two vectors.")
 
     supported_operations = {
         "add": calculate_addition,
@@ -131,7 +173,11 @@ def get_vector_operation(input_str_1: Union[str, sp.Expr], input_str_2: Union[st
         "multiply": lambda val_a, val_b: val_a * val_b, 
         "divide": lambda val_a, val_b: val_a / val_b,
         "dot": calculate_dot,
-        "cross": calculate_cross
+        "cross": calculate_cross,
+        "length": calculate_length,
+        "angle": calculate_angle,  # Assuming you have a function for angle calculation
+        "unit": calculate_unit,
+        "projection": calculate_projection,  # Assuming you have a function for projection
     }
     
     if operation_type not in supported_operations:
@@ -139,11 +185,18 @@ def get_vector_operation(input_str_1: Union[str, sp.Expr], input_str_2: Union[st
         
     calculation_result = supported_operations[operation_type](operand_1, operand_2)
 
+    try:
+        # Attempt to simplify the result for cleaner output
+        numerical_value = sp.N(calculation_result)
+    except Exception:
+        numerical_value = calculation_result  # Fallback to the original result if simplification fails
+
     return {
         "result": calculation_result,
-        "steps": solution_steps
+        "steps": solution_steps,
+    "numerical_value": (float(numerical_value) if numerical_value.is_real else complex(numerical_value)) if isinstance(numerical_value, sp.core.numbers.Number) else numerical_value
     }
 # --- Example Usage ---
 if __name__ == "__main__":
-    scalar_result = get_vector_operation("[x, y, z]", "[1, 2, 3]", "dot")
-    print(get_gradient(scalar_result))
+    scalar_result = get_vector_operation("[4, 5, 6]", "[1, 2, 3]", "angle")
+    print(type(scalar_result["numerical_value"]))
