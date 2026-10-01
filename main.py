@@ -5,6 +5,7 @@ from core.calculus import get_gradient, get_lagrange, get_vector_operation
 from sympy import sstr
 from enum import Enum
 
+# Hi from Mubarak
 app = typer.Typer(help="Calculus 3 & Magnetism CLI Engine")
 console = Console()
 
