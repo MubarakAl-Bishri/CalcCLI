@@ -5,7 +5,7 @@ from core.calculus import get_gradient, get_lagrange, get_vector_operation
 from sympy import sstr
 from enum import Enum
 
-# Hi from Mubarak, this is test branch
+# Hi from Mubarak, this is test branch for testing the CLI engine. I will be adding more features to this branch.
 app = typer.Typer(help="Calculus 3 & Magnetism CLI Engine")
 console = Console()
 
